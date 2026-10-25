@@ -147,7 +147,16 @@ a{color:var(--accent)}
 <p class="note" style="margin-top:0">Pick a question. Answers are written from this project's results; numbers come from the same data as the other tabs.</p>
 <div class="chips" id="askChips" style="margin:12px 0"></div>
 <div class="reason" id="askAnswer" style="font-size:15px;line-height:1.6"></div>
-<p class="note">For your own questions, the original <a href="https://jing0712.github.io/shelf-signal/">Shelf Signal</a> has a live Claude analyst (store CA_1, 15 items).</p>
+<div id="liveAsk" hidden style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+<h3 style="margin:0 0 6px">Ask your own question</h3>
+<p class="note" style="margin-top:0">Answered live by Claude Sonnet 5.5 from this project's results. Up to 500 characters; answers can take a few seconds.</p>
+<form id="askForm" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+<input id="askInput" type="text" maxlength="500" placeholder="e.g. Why does Chronos forecast too low on sparse items?" style="flex:1 1 280px;min-width:0;font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)">
+<button id="askBtn" type="submit" class="chip" style="padding:8px 14px;color:var(--ink);border-color:var(--faint)">Ask</button>
+</form>
+<div class="reason" id="liveAnswer" hidden style="font-size:15px;line-height:1.6;white-space:pre-wrap"></div>
+</div>
+<p class="note">For more questions, the original <a href="https://jing0712.github.io/shelf-signal/">Shelf Signal</a> has a live Claude analyst (store CA_1, 15 items).</p>
 </div>
 </section>
 
@@ -225,6 +234,9 @@ window.addEventListener("load", ()=>{ const t=(location.hash||"").slice(1); cons
   chart("cWeekday",{type:"bar",data:{labels:D.weekday.map(d=>d.weekday.slice(0,3)),datasets:[{data:D.weekday.map(d=>d.index),backgroundColor:D.weekday.map(d=>/Sat|Sun/.test(d.weekday)?"#2A78D6":"#c9c8c3"),borderRadius:4}]},
     options:baseOpts({plugins:{legend:{display:false}}})});
 })();
+
+// Live analyst endpoint (Cloudflare Worker in the shelf-signal-dashboard repo, worker/). Empty = box hidden.
+const ASK_ENDPOINT = "";
 
 // ---------- explorer
 const LEVELS = ["Total","Store","Department","Store x dept","Item"];
@@ -363,6 +375,21 @@ function drawAsk(){
   const show=i=>{document.getElementById("askAnswer").textContent=QA[i][1]; chips.querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",+c.dataset.i===i));};
   chips.onclick=e=>{const c=e.target.closest(".chip"); if(c) show(+c.dataset.i);};
   show(0);
+  // Live questions go to our Cloudflare Worker, which holds the API key and calls Claude Sonnet 5.5.
+  if(!ASK_ENDPOINT) return;
+  document.getElementById("liveAsk").hidden=false;
+  const form=document.getElementById("askForm"), input=document.getElementById("askInput"), btn=document.getElementById("askBtn"), out=document.getElementById("liveAnswer");
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const question=input.value.trim(); if(!question) return;
+    btn.disabled=true; btn.textContent="Thinking…"; out.hidden=false; out.textContent="Asking the analyst…";
+    try{
+      const r=await fetch(ASK_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question})});
+      const j=await r.json().catch(()=>({}));
+      out.textContent=j.answer||j.error||"Something went wrong. Please try again.";
+    }catch(err){ out.textContent="The analyst could not be reached. Please try again, or pick a question above."; }
+    btn.disabled=false; btn.textContent="Ask";
+  };
 }
 </script>
 </body>
